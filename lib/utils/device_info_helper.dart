@@ -34,7 +34,7 @@ class DeviceInfoHelper {
         Text(
           lastPrinter?.name ?? 'Chưa có máy in được lưu',
           style: TextStyle(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: isConnected ? Colors.green.shade700 : Colors.grey.shade700,
           ),
@@ -57,7 +57,7 @@ class DeviceInfoHelper {
                       ? 'Kết nối lần cuối: ${formatLastConnected(lastPrinter.lastConnectedTime)}'
                       : 'Chưa có thông tin kết nối',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 10,
                     color: Colors.grey.shade600,
                   ),
                   maxLines: 1,

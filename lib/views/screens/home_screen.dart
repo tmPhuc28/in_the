@@ -1,5 +1,7 @@
 // home_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:in_the/views/screens/printer_history_screen.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/bluetooth_controller.dart';
 import '../../controllers/print_controller.dart';
@@ -21,30 +23,55 @@ class _HomeScreenState extends State<HomeScreen> {
   DateTime? _lastBackPressTime;
 
   void _resetForm() {
-    setState(() {
-      _cardInputController.clear();
-      Provider.of<PrintController>(context, listen: false);
-    });
+    if(_cardInputController.text.isNotEmpty){
+      setState(() {
+        _cardInputController.clear();
+        Provider.of<PrintController>(context, listen: false);
+      });
+      CustomSnackbar.showInfo(
+        context,
+        'Đã xóa thông tin thẻ',
+        duration: const Duration(seconds: 2),
+      );
+    }
+    else {
+      _backButtonPressCount == 2;
+      CustomSnackbar.showWarning(
+        context,
+        'Nhấn thêm lần nữa để thoát',
+        duration: const Duration(seconds: 2),
+      );
+    }
   }
 
   Future<bool> _onWillPop() async {
     final now = DateTime.now();
-    if (_lastBackPressTime == null ||
-        now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+
+    if (_backButtonPressCount == 0 || (_lastBackPressTime == null ||
+        now.difference(_lastBackPressTime!) > const Duration(seconds: 2))) {
       _lastBackPressTime = now;
-      _backButtonPressCount = 1;
+      _backButtonPressCount++;
       _resetForm();
       return false;
     }
 
-    _backButtonPressCount++;
-    if (_backButtonPressCount >= 2) {
-      final shouldExit = await DialogHelper.showExitConfirmDialog(context);
-      if (shouldExit) {
-        return true;
-      }
-      _backButtonPressCount = 0;
+    if (_backButtonPressCount == 1 &&
+        (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2))) {
+      _lastBackPressTime = now;
+      _backButtonPressCount++;
+      CustomSnackbar.showWarning(
+        context,
+        'Nhấn thêm lần nữa để thoát',
+        duration: const Duration(seconds: 2),
+      );
+      return false;
     }
+
+    if (_backButtonPressCount >= 2) {
+      return await DialogHelper.showExitConfirmDialog(context);
+    }
+
     return false;
   }
 
@@ -72,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ).then((_) {
         // Cleanup sau khi đóng preview
+        if(!mounted) return;
         final bluetoothController = context.read<BluetoothController>();
         bluetoothController.lifecycleService.setPreviewState(false);
         if (bluetoothController.isConnected) {
@@ -104,18 +132,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Title Bar - Simplified with only centered title
-                  SizedBox(
-                    height: 56,
-                    child: Center(
-                      child: Text(
-                        'In thẻ cào',
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Center( child: Text(
+                        'In thẻ',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey.shade800,
                         ),
+                      ),),
+                      IconButton(
+                        icon: const Icon(Icons.history),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const PrinterHistoryScreen(),
+                            ),
+                          );
+                        },
                       ),
-                    ),
+                    ],
                   ),
 
                   // Printer Info Bar or Bluetooth Enable Button
@@ -162,17 +201,21 @@ class _HomeScreenState extends State<HomeScreen> {
                               Text(
                                 'Bluetooth chưa được bật',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.orange.shade800,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 'Bật Bluetooth để kết nối máy in',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 10,
                                   color: Colors.orange.shade700,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
@@ -293,16 +336,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Consumer2<BluetoothController, PrintController>(
       builder: (context, bluetoothController, printController, _) {
         return PopScope(
-            canPop: false,
-            onPopInvoked: (bool didPop) async {
-          if (didPop) return;
-          final shouldPop = await _onWillPop();
-          if (shouldPop) {
-            if (context.mounted) {
-              Navigator.pop(context);
+          canPop: false,
+          onPopInvokedWithResult: (bool didPop, dynamic result) async {
+            if (didPop) return;
+            if (!didPop) {
+              final shouldPop = await _onWillPop();
+              if (shouldPop && context.mounted) {
+                SystemNavigator.pop();
+              }
             }
-          }
-        },
+          },
         child: Scaffold(
           backgroundColor: Colors.grey[50],
           appBar: _buildAppBar(context),
@@ -349,6 +392,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
                                     'Cho phép quét mã nạp tiền',
@@ -356,6 +401,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 14,
                                       color: Colors.grey[600],
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -414,6 +461,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                           fontSize: 14,
                                           fontWeight: FontWeight.w500,
                                         ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ),
@@ -470,6 +519,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ))
                                 .toList(),
@@ -494,7 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           TextField(
                             controller: _cardInputController,
                             decoration: InputDecoration(
-                              hintText: 'Mã thẻ: xxxxxx\nSerial: xxxxxx',
+                              hintText: 'Mã thẻ: xxxxxx\nSố Seri: xxxxxx',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(8),
                                 borderSide: BorderSide(color: Colors.grey[200]!),

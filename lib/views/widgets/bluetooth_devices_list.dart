@@ -21,6 +21,7 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     super.initState();
     // Start scanning when list is shown
     Future.delayed(Duration.zero, () {
+      if(!mounted) return;
       final controller = context.read<BluetoothController>();
       if (controller.isBluetoothEnabled) {
         controller.scanForDevices();
@@ -57,6 +58,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
               color: Colors.grey.shade800,
             ),
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
           Text(
@@ -66,6 +69,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
               color: Colors.grey.shade600,
             ),
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 24),
           Row(
@@ -97,6 +102,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -145,6 +152,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
               color: color,
               fontSize: 12,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -204,10 +213,14 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
           fontWeight: FontWeight.w500,
           color: isConnected ? Colors.green : null,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         device.id,
         style: const TextStyle(fontSize: 13),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       trailing: getTrailingWidget(),
       onTap: (isConnecting || isDisconnecting)
@@ -247,6 +260,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               const Spacer(),
               if (controller.isScanning)
@@ -287,6 +302,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
                       color: Colors.grey.shade600,
                       fontSize: 16,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   if (!controller.isScanning) ...[
                     const SizedBox(height: 8),
@@ -296,6 +313,8 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
                         color: Colors.grey.shade500,
                         fontSize: 14,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ],

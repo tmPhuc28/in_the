@@ -158,6 +158,8 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                         color: Colors.blue[600],
                         fontWeight: FontWeight.w500,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ] else ...[
                     Icon(
@@ -178,6 +180,8 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                             : Colors.grey[600],
                         fontWeight: FontWeight.w500,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                   // Chỉ hiện arrow khi bluetooth đã bật
@@ -227,7 +231,8 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
           children: [
             CircularProgressIndicator(strokeWidth: 2),
             SizedBox(height: 16),
-            Text('Đang tạo bản xem trước...'),
+            Text('Đang tạo bản xem trước...', maxLines: 1,
+              overflow: TextOverflow.ellipsis,),
           ],
         ),
       );
@@ -249,6 +254,8 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                 fontSize: 16,
                 color: Colors.grey[600],
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -284,7 +291,7 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
   Widget build(BuildContext context) {
     return PopScope(
       canPop: true,
-      onPopInvoked: (bool didPop) async {
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
         if (didPop) {
           _setupPreview(false);
         }

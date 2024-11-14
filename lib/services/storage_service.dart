@@ -11,7 +11,7 @@ class StorageService {
     await prefs.setString(_lastPrinterIdKey, printer.id);
 
     // Save printer details
-    final printers = await _getPrinters();
+    final printers = await getPrinters();
     printers[printer.id] = printer;
     await _savePrinters(printers);
   }
@@ -22,11 +22,11 @@ class StorageService {
   }
 
   Future<PrinterDevice?> getPrinterDetails(String printerId) async {
-    final printers = await _getPrinters();
+    final printers = await getPrinters();
     return printers[printerId];
   }
 
-  Future<Map<String, PrinterDevice>> _getPrinters() async {
+  Future<Map<String, PrinterDevice>> getPrinters() async {
     final prefs = await SharedPreferences.getInstance();
     final String? data = prefs.getString(_printersKey);
     if (data == null) return {};

@@ -50,11 +50,16 @@ class BluetoothController extends ChangeNotifier {
       debugPrint('📱 App paused - Xử lý tạm dừng');
 
       try {
+        await stopScan();
         // Lưu thông tin máy in trước khi ngắt kết nối
+
         if (_connectedPrinter != null) {
           debugPrint('💾 Lưu thông tin máy in: ${_connectedPrinter!.name}');
-          await _storageService.saveLastPrinter(_connectedPrinter!);
-          _lastKnownPrinter =  _connectedPrinter;
+          final updatedPrinter = _connectedPrinter?.copyWith(
+            lastConnectedTime: DateTime.now(),
+          );
+          await _storageService.saveLastPrinter(updatedPrinter!);
+          _lastKnownPrinter =  updatedPrinter;
         }
 
         // Ngắt kết nối tạm thời
@@ -91,7 +96,10 @@ class BluetoothController extends ChangeNotifier {
     _lifecycleService.onInactive = () async {
       debugPrint('📱 App inactive - Lưu trạng thái');
       if (_connectedPrinter != null) {
-        await _storageService.saveLastPrinter(_connectedPrinter!);
+        final updatedPrinter = _connectedPrinter?.copyWith(
+          lastConnectedTime: DateTime.now(),
+        );
+        await _storageService.saveLastPrinter(updatedPrinter!);
       }
     };
   }
@@ -176,7 +184,7 @@ class BluetoothController extends ChangeNotifier {
     }
   }
 
-  Future<void> scanForDevices({Duration timeout = const Duration(seconds: 4)}) async {
+  Future<void> scanForDevices({Duration timeout = const Duration(seconds: 10)}) async {
     if (!_isBluetoothEnabled) {
       debugPrint('⚠️ Bluetooth not enabled');
       return;
@@ -190,6 +198,12 @@ class BluetoothController extends ChangeNotifier {
       _availableDevices.clear();
       notifyListeners();
 
+      if (!_lifecycleService.isPreviewOpen) {
+        debugPrint('Preview closed, stopping scan');
+        await stopScan();
+        return;
+      }
+
       await _bluetoothService.scanDevices(
         scanDuration: timeout,
         waitForResult: const Duration(milliseconds: 500),
@@ -202,6 +216,12 @@ class BluetoothController extends ChangeNotifier {
       _isScanning = false;
       notifyListeners();
     }
+  }
+
+  Future<void> stopScan() async {
+    await _bluetoothService.stopScan();
+    _isScanning = false;
+    notifyListeners();
   }
 
   Future<void> connectToPrinter(PrinterDevice printer) async {
@@ -262,7 +282,10 @@ class BluetoothController extends ChangeNotifier {
 
       // Lưu thông tin máy in trước khi ngắt nếu cần
       if (!temporary && _connectedPrinter != null) {
-        await _storageService.saveLastPrinter(_connectedPrinter!);
+        final updatedPrinter = _connectedPrinter?.copyWith(
+          lastConnectedTime: DateTime.now(),
+        );
+        await _storageService.saveLastPrinter(updatedPrinter!);
         debugPrint('💾 Đã lưu thông tin máy in trước khi ngắt');
       }
 
@@ -354,6 +377,7 @@ class BluetoothController extends ChangeNotifier {
 
   @override
   void dispose() {
+    stopScan();
     _lifecycleService.dispose();
     _bluetoothService.dispose();
     _deviceSubscription?.cancel();
