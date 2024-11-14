@@ -311,6 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               // Main Card
               Card(
+                color: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -350,7 +351,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ),
                                   Text(
-                                    'Cho phép quét mã nạp tiền nhanh',
+                                    'Cho phép quét mã nạp tiền',
                                     style: TextStyle(
                                       fontSize: 14,
                                       color: Colors.grey[600],
@@ -364,10 +365,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         value: printController.printWithQR,
                         onChanged: (value) => printController.toggleQR(value),
                       ),
-
-                      const SizedBox(height: 16),
                       const Divider(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       // Provider Selection
                       Column(
@@ -424,7 +423,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       // Denomination Selection
                       Column(
@@ -478,7 +477,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       // Card Input
                       Column(
@@ -516,7 +515,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
 
                       // Preview Button
                       ElevatedButton(

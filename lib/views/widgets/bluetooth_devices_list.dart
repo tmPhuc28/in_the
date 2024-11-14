@@ -108,9 +108,11 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     );
   }
 
-  Widget _buildDeviceItem(BuildContext context, PrinterDevice device) {
+  Widget _buildDeviceItem(BuildContext context, PrinterDevice device, BluetoothController controller) {
     final bluetoothController = context.read<BluetoothController>();
     final isConnected = bluetoothController.connectedPrinter?.id == device.id;
+    final isConnecting = bluetoothController.isConnecting &&
+        bluetoothController.lastKnownPrinter?.id == device.id;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -139,7 +141,44 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
         device.id,
         style: const TextStyle(fontSize: 13),
       ),
-      trailing: isConnected
+      trailing: isConnecting
+          ? Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 4,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.blue.shade200,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Colors.blue.shade600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Đang kết nối...',
+              style: TextStyle(
+                color: Colors.blue.shade700,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      )
+          : isConnected
           ? Container(
         padding: const EdgeInsets.symmetric(
           horizontal: 12,
@@ -225,9 +264,7 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    controller.isScanning
-                        ? 'Đang tìm kiếm thiết bị...'
-                        : 'Không tìm thấy thiết bị nào',
+                    controller.isScanning ? 'Đang tìm kiếm thiết bị...' : 'Không tìm thấy thiết bị nào',
                     style: TextStyle(
                       color: Colors.grey.shade600,
                       fontSize: 16,
@@ -251,7 +288,7 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final device = controller.availableDevices[index];
-                return _buildDeviceItem(context, device);
+                return _buildDeviceItem(context, device, controller);
               },
             ),
           ),

@@ -9,6 +9,9 @@ class BluetoothService {
   final BluetoothPrint _bluetoothPrint = BluetoothPrint.instance;
   final _stateController = StreamController<bool>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
+  final _deviceController = StreamController<List<PrinterDevice>>.broadcast();
+  final _scannedDevices = <String, PrinterDevice>{};
+  bool _isScanning = true;
   StreamSubscription? _bluetoothStateSubscription;
   StreamSubscription? _connectionStateSubscription;
 
@@ -18,6 +21,8 @@ class BluetoothService {
 
   Stream<bool> get stateStream => _stateController.stream;
   Stream<bool> get connectionStream => _connectionController.stream;
+  Stream<List<PrinterDevice>> get deviceStream => _deviceController.stream;
+  bool get isScanning => _isScanning;
 
   void _initListeners() {
     // Listen for bluetooth state changes
@@ -56,8 +61,8 @@ class BluetoothService {
   Future<bool> verifyDeviceExists(String deviceId) async {
     try {
       final devices = await scanDevices(
-        scanDuration: const Duration(milliseconds: 200),
-        waitForResult: const Duration(milliseconds: 200),
+        scanDuration: const Duration(milliseconds: 500),
+        waitForResult: const Duration(milliseconds: 500),
       );
       return devices.any((device) => device.id == deviceId);
     } catch (e) {
@@ -66,22 +71,29 @@ class BluetoothService {
     }
   }
 
+  void _emitDevices() {
+    final devices = _scannedDevices.values.toList();
+    _deviceController.add(List.unmodifiable(devices));
+  }
+
   Future<List<PrinterDevice>> scanDevices({Duration scanDuration = const Duration(seconds: 4), Duration waitForResult = const Duration(milliseconds: 500),}) async {
     try {
-      final devices = <PrinterDevice>[];
+      _isScanning = true;
+      _scannedDevices.clear();
+
       final completer = Completer<List<PrinterDevice>>();
       StreamSubscription? subscription;
 
-      // Xử lý timeout
+      // Setup timeout
       Timer? timeoutTimer;
       timeoutTimer = Timer(scanDuration + waitForResult, () {
         subscription?.cancel();
         if (!completer.isCompleted) {
-          debugPrint('Scan timeout after ${scanDuration.inSeconds}s');
-          completer.complete(devices);
+          completer.complete(_scannedDevices.values.toList());
         }
       });
 
+      // Listen for scan results
       subscription = _bluetoothPrint.scanResults.listen(
             (results) {
           for (var device in results) {
@@ -92,9 +104,11 @@ class BluetoothService {
                 address: device.address!,
               );
 
-              // Chỉ thêm thiết bị nếu chưa có trong danh sách
-              if (!devices.any((d) => d.id == printerDevice.id)) {
-                devices.add(printerDevice);
+              // Chỉ thêm và emit nếu là thiết bị mới
+              if (!_scannedDevices.containsKey(printerDevice.id)) {
+                _scannedDevices[printerDevice.id] = printerDevice;
+                // Emit ngay khi tìm thấy thiết bị mới
+                _emitDevices();
               }
             }
           }
@@ -107,6 +121,7 @@ class BluetoothService {
         },
       );
 
+
       debugPrint('Starting scan for ${scanDuration.inSeconds}s');
       await _bluetoothPrint.startScan(timeout: scanDuration);
 
@@ -116,13 +131,15 @@ class BluetoothService {
       await subscription.cancel();
 
       if (!completer.isCompleted) {
-        completer.complete(devices);
+        completer.complete(_scannedDevices.values.toList());
       }
 
       return completer.future;
     } catch (e) {
       debugPrint('Error scanning devices: $e');
       rethrow;
+    }finally {
+      _isScanning = false;
     }
   }
 
@@ -206,6 +223,7 @@ class BluetoothService {
   void dispose() {
     _bluetoothStateSubscription?.cancel();
     _connectionStateSubscription?.cancel();
+    _deviceController.close();
     _stateController.close();
     _connectionController.close();
     _bluetoothPrint.disconnect();

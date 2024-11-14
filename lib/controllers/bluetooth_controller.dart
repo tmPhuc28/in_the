@@ -19,6 +19,8 @@ class BluetoothController extends ChangeNotifier {
   bool _isConnected = false;
   final List<PrinterDevice> _availableDevices = [];
 
+  StreamSubscription? _deviceSubscription;
+
   BluetoothController({
     required BluetoothService bluetoothService,
     required StorageService storageService,
@@ -28,7 +30,6 @@ class BluetoothController extends ChangeNotifier {
         _lifecycleService = lifecycleService {
     _init();
     _initLifecycleHandlers();
-    scanForDevices();
   }
 
 
@@ -122,6 +123,44 @@ class BluetoothController extends ChangeNotifier {
     // Check initial bluetooth state
     _isBluetoothEnabled = await _bluetoothService.isEnabled();
     notifyListeners();
+
+    _deviceSubscription = _bluetoothService.deviceStream.listen((devices) {
+      _updateDeviceList(devices);
+      notifyListeners();
+    });
+  }
+
+  // Cập nhật device list với trạng thái kết nối
+  void _updateDeviceList(List<PrinterDevice> devices) {
+    _availableDevices.clear();
+
+    final updatedDevices = devices.map((device) {
+      return device.copyWith(
+        isConnected: device.id == _connectedPrinter?.id,
+        lastConnectedTime: device.id == _lastKnownPrinter?.id
+            ? _lastKnownPrinter?.lastConnectedTime
+            : null,
+      );
+    }).toList();
+
+    // Sort devices (giữ nguyên logic sort cũ)
+    updatedDevices.sort((a, b) {
+      if (a.id == _connectedPrinter?.id) return -1;
+      if (b.id == _connectedPrinter?.id) return 1;
+
+      final aLastConnected = a.lastConnectedTime;
+      final bLastConnected = b.lastConnectedTime;
+
+      if (aLastConnected != null && bLastConnected != null) {
+        return bLastConnected.compareTo(aLastConnected);
+      }
+      if (aLastConnected != null) return -1;
+      if (bLastConnected != null) return 1;
+
+      return a.name.compareTo(b.name);
+    });
+
+    _availableDevices.addAll(updatedDevices);
   }
 
   Future<void> enableBluetooth() async {
@@ -135,27 +174,35 @@ class BluetoothController extends ChangeNotifier {
     }
   }
 
-  Future<void> scanForDevices() async {
-    if (!_isBluetoothEnabled || _isScanning) return;
+  Future<void> scanForDevices({Duration timeout = const Duration(seconds: 4)}) async {
+    if (!_isBluetoothEnabled) {
+      debugPrint('⚠️ Bluetooth not enabled');
+      return;
+    }
 
     try {
       _isScanning = true;
+      notifyListeners();
+
+      // Xóa danh sách thiết bị cũ trước khi scan mới
       _availableDevices.clear();
       notifyListeners();
 
-      final devices = await _bluetoothService.scanDevices();
-      _availableDevices.addAll(devices);
+      await _bluetoothService.scanDevices(
+        scanDuration: timeout,
+        waitForResult: const Duration(milliseconds: 500),
+      );
 
-      _isScanning = false;
-      notifyListeners();
     } catch (e) {
+      debugPrint('Error scanning: $e');
+      rethrow;
+    } finally {
       _isScanning = false;
       notifyListeners();
-      rethrow;
     }
   }
 
-  Future<void> connectToPrinter(PrinterDevice printer, {Duration timeout = const Duration(seconds: 10),}) async {
+  Future<void> connectToPrinter(PrinterDevice printer, {Duration timeout = const Duration(seconds: 3),}) async {
 
     if (_isConnecting) {
       debugPrint('⚠️ Đang có yêu cầu kết nối khác, bỏ qua...');
@@ -228,7 +275,7 @@ class BluetoothController extends ChangeNotifier {
       // Đợi để đảm bảo ngắt kết nối hoàn tất
       await Future.delayed(const Duration(milliseconds: 300));
 
-        _isConnected = false;
+      _isConnected = false;
       if (!temporary) {
         _connectedPrinter = null;
         debugPrint('🗑️ Đã xóa thông tin máy in');
@@ -311,6 +358,7 @@ class BluetoothController extends ChangeNotifier {
   void dispose() {
     _lifecycleService.dispose();
     _bluetoothService.dispose();
+    _deviceSubscription?.cancel();
     super.dispose();
   }
 }

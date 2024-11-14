@@ -45,6 +45,7 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
     try {
       final success = await printController.printCard(context, widget.cardText);
       if (success && mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
         Navigator.pop(context);
       }
     } finally {
@@ -124,44 +125,73 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
               decoration: BoxDecoration(
                 color: bluetoothController.isConnected
                     ? Colors.green[50]
+                    : bluetoothController.isConnecting
+                    ? Colors.blue[50]
                     : Colors.grey[50],
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: bluetoothController.isConnected
                       ? Colors.green[200]!
+                      : bluetoothController.isConnecting
+                      ? Colors.blue[200]!
                       : Colors.grey[300]!,
                 ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.print,
-                    size: 18,
-                    color: bluetoothController.isConnected
-                        ? Colors.green[600]
-                        : Colors.grey[600],
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    bluetoothController.isConnected
-                        ? bluetoothController.connectedPrinter?.name ?? 'Đang kết nối...'
-                        : 'Chọn máy in',
-                    style: TextStyle(
+                  if (bluetoothController.isConnecting) ...[
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.blue[600]!,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Đang kết nối...',
+                      style: TextStyle(
+                        color: Colors.blue[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ] else ...[
+                    Icon(
+                      Icons.print,
+                      size: 18,
                       color: bluetoothController.isConnected
                           ? Colors.green[600]
                           : Colors.grey[600],
-                      fontWeight: FontWeight.w500,
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Text(
+                      bluetoothController.isConnected
+                          ? bluetoothController.connectedPrinter?.name ?? 'Đang kết nối...'
+                          : 'Chọn máy in',
+                      style: TextStyle(
+                        color: bluetoothController.isConnected
+                            ? Colors.green[600]
+                            : Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                   // Chỉ hiện arrow khi bluetooth đã bật
                   if (bluetoothController.isBluetoothEnabled) ...[
                     const SizedBox(width: 4),
                     Icon(
-                      _showBluetoothList ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                      _showBluetoothList
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
                       size: 18,
                       color: bluetoothController.isConnected
                           ? Colors.green[600]
+                          : bluetoothController.isConnecting
+                          ? Colors.blue[600]
                           : Colors.grey[600],
                     ),
                   ],
