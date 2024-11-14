@@ -108,11 +108,79 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     );
   }
 
+  Widget _buildStatusContainer({
+    required Color color,
+    required String text,
+    required bool showSpinner,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showSpinner) ...[
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDeviceItem(BuildContext context, PrinterDevice device, BluetoothController controller) {
     final bluetoothController = context.read<BluetoothController>();
     final isConnected = bluetoothController.connectedPrinter?.id == device.id;
     final isConnecting = bluetoothController.isConnecting &&
         bluetoothController.lastKnownPrinter?.id == device.id;
+    final isDisconnecting = bluetoothController.isDisconnecting &&
+        bluetoothController.connectedPrinter?.id == device.id;
+
+    Widget? getTrailingWidget() {
+      if (isConnecting) {
+        return _buildStatusContainer(
+          color: Colors.blue,
+          text: 'Đang kết nối...',
+          showSpinner: true,
+        );
+      } else if (isDisconnecting) {
+        return _buildStatusContainer(
+          color: Colors.red,
+          text: 'Đang ngắt kết nối...',
+          showSpinner: true,
+        );
+      } else if (isConnected) {
+        return _buildStatusContainer(
+          color: Colors.green,
+          text: 'Đã kết nối',
+          showSpinner: false,
+        );
+      }
+      return null;
+    }
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -141,73 +209,23 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
         device.id,
         style: const TextStyle(fontSize: 13),
       ),
-      trailing: isConnecting
-          ? Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 4,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.blue.shade200,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Colors.blue.shade600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Đang kết nối...',
-              style: TextStyle(
-                color: Colors.blue.shade700,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      )
-          : isConnected
-          ? Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 4,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.green.shade200,
-          ),
-        ),
-        child: const Text(
-          'Đã kết nối',
-          style: TextStyle(
-            color: Colors.green,
-            fontSize: 12,
-          ),
-        ),
-      )
-          : null,
-      onTap: () async {
+      trailing: getTrailingWidget(),
+      onTap: (isConnecting || isDisconnecting)
+          ? null
+          : () async {
         try {
-          await bluetoothController.connectToPrinter(device);
-          widget.onDeviceSelected();
+          if (isConnected) {
+            // Nếu đang kết nối, thực hiện ngắt kết nối
+            await bluetoothController.disconnectPrinter(temporary: false);
+          } else {
+            // Nếu chưa kết nối, thực hiện kết nối
+            await bluetoothController.connectToPrinter(device);
+            widget.onDeviceSelected();
+          }
         } catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Lỗi kết nối: $e')),
+              SnackBar(content: Text('Lỗi: $e')),
             );
           }
         }

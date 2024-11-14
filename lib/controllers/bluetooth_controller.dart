@@ -15,6 +15,7 @@ class BluetoothController extends ChangeNotifier {
   PrinterDevice? _lastKnownPrinter;
   bool _isBluetoothEnabled = false;
   bool _isConnecting = false;
+  bool _isDisconnecting = false;
   bool _isScanning = false;
   bool _isConnected = false;
   final List<PrinterDevice> _availableDevices = [];
@@ -35,6 +36,7 @@ class BluetoothController extends ChangeNotifier {
 
   bool get isBluetoothEnabled => _isBluetoothEnabled;
   bool get isConnecting => _isConnecting;
+  bool get isDisconnecting => _isDisconnecting;
   bool get isConnected => _isConnected;
   bool get isScanning => _isScanning;
   List<PrinterDevice> get availableDevices => List.unmodifiable(_availableDevices);
@@ -202,48 +204,41 @@ class BluetoothController extends ChangeNotifier {
     }
   }
 
-  Future<void> connectToPrinter(PrinterDevice printer, {Duration timeout = const Duration(seconds: 3),}) async {
-
-    if (_isConnecting) {
-      debugPrint('⚠️ Đang có yêu cầu kết nối khác, bỏ qua...');
-      return;
-    }
+  Future<void> connectToPrinter(PrinterDevice printer) async {
+    // Nếu đang trong quá trình connect hoặc disconnect thì bỏ qua
+    if (_isConnecting || _isDisconnecting) return;
 
     try {
+      // Nếu đang kết nối với thiết bị này, thực hiện ngắt kết nối
+      if (_isConnected && _connectedPrinter?.id == printer.id) {
+        debugPrint('Disconnecting from printer: ${printer.name}');
+        await disconnectPrinter(temporary: false);
+        return;
+      }
+
       _isConnecting = true;
       notifyListeners();
-      debugPrint('🔄 Đang kết nối với ${printer.name}...');
 
-
-      // Ngắt kết nối hiện tại nếu đang kết nối với máy in khác
-      if (_isConnected && _connectedPrinter?.id != printer.id) {
-        debugPrint('📱 Ngắt kết nối với máy in hiện tại trước khi kết nối mới');
+      // Ngắt kết nối với thiết bị khác nếu đang kết nối
+      if (_isConnected && _connectedPrinter != null) {
         await disconnectPrinter(temporary: true);
       }
 
-      // Thử kết nối với timeout
-      bool connected = await Future.any([
-        _bluetoothService.connect(printer).then((_) {
-          debugPrint('✅ Kết nối thành công với ${printer.name}');
-          return true;
-        }),
-        Future.delayed(timeout)
-            .then((_) => throw TimeoutException('Kết nối quá thời gian chờ')),
-      ]);
+      debugPrint('Connecting to printer: ${printer.name}');
+      await _bluetoothService.connect(printer);
 
-      if (connected) {
-        final updatedPrinter = printer.copyWith(
-          isConnected: true,
-          lastConnectedTime: DateTime.now(),
-        );
-        _connectedPrinter = printer;
-        _lastKnownPrinter = _connectedPrinter;
-        _isConnected = true;
-        await _storageService.saveLastPrinter(updatedPrinter);
-        debugPrint('💾 Đã lưu thông tin máy in ${printer.name}');
-      }
+      final updatedPrinter = printer.copyWith(
+        isConnected: true,
+        lastConnectedTime: DateTime.now(),
+      );
+
+      _connectedPrinter = printer;
+      _lastKnownPrinter = _connectedPrinter;
+      _isConnected = true;
+      await _storageService.saveLastPrinter(updatedPrinter);
+
     } catch (e) {
-      debugPrint('❌ Lỗi kết nối: $e');
+      debugPrint('Error connecting: $e');
       _isConnected = false;
       _connectedPrinter = null;
       rethrow;
@@ -262,6 +257,8 @@ class BluetoothController extends ChangeNotifier {
     try {
       final printerName = _connectedPrinter?.name ?? 'Unknown';
       debugPrint('🔄 Đang ngắt kết nối với $printerName...');
+      _isDisconnecting = true;  // Set trạng thái đang ngắt kết nối
+      notifyListeners();
 
       // Lưu thông tin máy in trước khi ngắt nếu cần
       if (!temporary && _connectedPrinter != null) {
@@ -291,6 +288,7 @@ class BluetoothController extends ChangeNotifier {
       }
       rethrow;
     } finally {
+      _isDisconnecting = false;  // Reset trạng thái
       notifyListeners();
     }
   }
