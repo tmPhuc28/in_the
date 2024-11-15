@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../controllers/bluetooth_controller.dart';
 import '../../controllers/print_controller.dart';
 import 'bluetooth_devices_list.dart';
+import 'custom_snackbar.dart';
+import '../../extensions/printer_status_extension.dart';
 
 class PreviewBottomSheet extends StatefulWidget {
   final String cardText;
@@ -33,13 +35,30 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final bluetoothController = context.read<BluetoothController>();
-      // Chỉ tự động show devices list khi bluetooth chưa bật
       setState(() => _showBluetoothList = !bluetoothController.isBluetoothEnabled);
       _generatePreview(context.read<PrintController>());
     });
   }
 
+  @override
+  void dispose() {
+    _setupPreview(false);
+    _transformationController.dispose();
+    super.dispose();
+  }
+
   Future<void> _handlePrint(BuildContext context, BluetoothController bluetoothController, PrintController printController) async {
+    if (!bluetoothController.isBluetoothEnabled) {
+      CustomSnackbar.showWarning(context, 'Vui lòng bật Bluetooth');
+      return;
+    }
+
+    if (!bluetoothController.isDeviceConnected(bluetoothController.connectedPrinter?.id ?? '')) {
+      CustomSnackbar.showWarning(context, 'Vui lòng kết nối máy in');
+      setState(() => _showBluetoothList = true);
+      return;
+    }
+
     setState(() => _isPrinting = true);
 
     try {
@@ -83,14 +102,64 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
     if (isOpen) bluetoothController.reconnectLastPrinter();
   }
 
-  @override
-  void dispose() {
-    _setupPreview(false);
-    _transformationController.dispose();
-    super.dispose();
+  Widget _buildStatusContainer(BluetoothController controller) {
+    final status = controller.getPrinterStatus();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        color: status.backgroundColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: status.borderColor),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (status.showSpinner) ...[
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(status.foregroundColor),
+              ),
+            ),
+          ] else ...[
+            Icon(
+              Icons.print,
+              size: 18,
+              color: status.foregroundColor,
+            ),
+          ],
+          const SizedBox(width: 8),
+          Text(
+            status.getStatusText(controller.connectedPrinter?.name),
+            style: TextStyle(
+              color: status.foregroundColor,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (controller.isBluetoothEnabled) ...[
+            const SizedBox(width: 4),
+            Icon(
+              _showBluetoothList
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_down,
+              size: 18,
+              color: status.foregroundColor,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
-  Widget _buildHeader(BluetoothController bluetoothController) {
+  Widget _buildHeader(BluetoothController controller) {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -112,110 +181,22 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
           InkWell(
             onTap: () {
               // Chỉ cho phép toggle khi bluetooth đã bật
-              if (bluetoothController.isBluetoothEnabled) {
+              if (controller.isBluetoothEnabled) {
                 setState(() => _showBluetoothList = !_showBluetoothList);
               }
             },
             borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: bluetoothController.isConnected
-                    ? Colors.green[50]
-                    : bluetoothController.isConnecting
-                    ? Colors.blue[50]
-                    : Colors.grey[50],
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: bluetoothController.isConnected
-                      ? Colors.green[200]!
-                      : bluetoothController.isConnecting
-                      ? Colors.blue[200]!
-                      : Colors.grey[300]!,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (bluetoothController.isConnecting) ...[
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.blue[600]!,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Đang kết nối...',
-                      style: TextStyle(
-                        color: Colors.blue[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ] else ...[
-                    Icon(
-                      Icons.print,
-                      size: 18,
-                      color: bluetoothController.isConnected
-                          ? Colors.green[600]
-                          : Colors.grey[600],
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      bluetoothController.isConnected
-                          ? bluetoothController.connectedPrinter?.name ?? 'Đang kết nối...'
-                          : 'Chọn máy in',
-                      style: TextStyle(
-                        color: bluetoothController.isConnected
-                            ? Colors.green[600]
-                            : Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  // Chỉ hiện arrow khi bluetooth đã bật
-                  if (bluetoothController.isBluetoothEnabled) ...[
-                    const SizedBox(width: 4),
-                    Icon(
-                      _showBluetoothList
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      size: 18,
-                      color: bluetoothController.isConnected
-                          ? Colors.green[600]
-                          : bluetoothController.isConnecting
-                          ? Colors.blue[600]
-                          : Colors.grey[600],
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            child: _buildStatusContainer(controller),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildContent(BluetoothController bluetoothController) {
-    // Hiển thị danh sách thiết bị nếu:
-    // 1. Bluetooth chưa bật HOẶC
-    // 2. User chủ động tap để mở danh sách (và bluetooth đã bật)
-    if (!bluetoothController.isBluetoothEnabled || _showBluetoothList) {
+  Widget _buildContent(BluetoothController controller) {
+    if (!controller.isBluetoothEnabled || _showBluetoothList) {
       return BluetoothDevicesList(
         onDeviceSelected: () {
-          // Đóng danh sách sau khi kết nối thành công
           if (mounted) {
             setState(() => _showBluetoothList = false);
           }
@@ -223,7 +204,6 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
       );
     }
 
-    // Hiển thị preview
     if (_isGeneratingPreview) {
       return const Center(
         child: Column(
@@ -231,8 +211,7 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
           children: [
             CircularProgressIndicator(strokeWidth: 2),
             SizedBox(height: 16),
-            Text('Đang tạo bản xem trước...', maxLines: 1,
-              overflow: TextOverflow.ellipsis,),
+            Text('Đang tạo bản xem trước...'),
           ],
         ),
       );
@@ -254,8 +233,6 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                 fontSize: 16,
                 color: Colors.grey[600],
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -287,6 +264,61 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
     );
   }
 
+  Widget _buildPrintButton(BluetoothController controller) {
+    final bool canPrint = controller.isBluetoothEnabled &&
+        controller.isDeviceConnected(controller.connectedPrinter?.id ?? '') &&
+        !_isPrinting;
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: canPrint
+            ? () => _handlePrint(context, controller, context.read<PrintController>())
+            : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue[600],
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          disabledBackgroundColor: Colors.grey[100],
+          disabledForegroundColor: Colors.grey[400],
+        ),
+        child: _isPrinting
+            ? Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.grey[400]!),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Đang in...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        )
+            : const Text(
+          'In thẻ',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -306,7 +338,6 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
             ),
             child: Column(
               children: [
-                // Handle
                 const SizedBox(height: 12),
                 Container(
                   width: 40,
@@ -316,21 +347,14 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-
-                // Header
                 _buildHeader(bluetoothController),
-
                 const Divider(height: 1),
-
-                // Content
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: _buildContent(bluetoothController),
                   ),
                 ),
-
-                // Print Button - Chỉ hiển thị khi đã kết nối
                 if (bluetoothController.isBluetoothEnabled)
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -339,57 +363,7 @@ class _PreviewBottomSheetState extends State<PreviewBottomSheet> {
                         top: BorderSide(color: Colors.grey[200]!),
                       ),
                     ),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        // Chỉ enable khi đã kết nối và không trong trạng thái đang in
-                        onPressed: (bluetoothController.isBluetoothEnabled &&
-                            bluetoothController.isConnected &&
-                            !_isPrinting)
-                            ? () => _handlePrint(context, bluetoothController, printController)
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[600],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          disabledBackgroundColor: Colors.grey[100],
-                          disabledForegroundColor: Colors.grey[400],
-                        ),
-                        child: _isPrinting
-                            ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.grey[400]!),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Đang in...',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        )
-                            : const Text(
-                          'In thẻ',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
+                    child: _buildPrintButton(bluetoothController),
                   )
               ],
             ),

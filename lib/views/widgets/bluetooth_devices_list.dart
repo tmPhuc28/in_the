@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/bluetooth_controller.dart';
+import '../../enums/connection_state.dart';
 import '../../models/printer_device.dart';
+import 'custom_snackbar.dart';
+
 
 class BluetoothDevicesList extends StatefulWidget {
   final VoidCallback onDeviceSelected;
@@ -115,7 +118,7 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     );
   }
 
-  Widget _buildStatusContainer({
+  Widget _buildStatusIndicator({
     required Color color,
     required String text,
     required bool showSpinner,
@@ -160,36 +163,34 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     );
   }
 
-  Widget _buildDeviceItem(BuildContext context, PrinterDevice device, BluetoothController controller) {
-    final bluetoothController = context.read<BluetoothController>();
-    final isConnected = bluetoothController.connectedPrinter?.id == device.id;
-    final isConnecting = bluetoothController.isConnecting &&
-        bluetoothController.lastKnownPrinter?.id == device.id;
-    final isDisconnecting = bluetoothController.isDisconnecting &&
-        bluetoothController.connectedPrinter?.id == device.id;
+  Widget? _buildStatusContainer(PrinterDevice device, BluetoothController controller) {
+    final status = controller.getPrinterStatus();
 
-    Widget? getTrailingWidget() {
-      if (isConnecting) {
-        return _buildStatusContainer(
-          color: Colors.blue,
-          text: 'Đang kết nối...',
-          showSpinner: true,
-        );
-      } else if (isDisconnecting) {
-        return _buildStatusContainer(
-          color: Colors.red,
-          text: 'Đang ngắt kết nối...',
-          showSpinner: true,
-        );
-      } else if (isConnected) {
-        return _buildStatusContainer(
-          color: Colors.green,
-          text: 'Đã kết nối',
-          showSpinner: false,
-        );
-      }
-      return null;
+    if (status == PrinterConnectionState.connecting) {
+      return _buildStatusIndicator(
+        color: Colors.blue,
+        text: 'Đang kết nối...',
+        showSpinner: true,
+      );
+    } else if (status == PrinterConnectionState.disconnecting) {
+      return _buildStatusIndicator(
+        color: Colors.red,
+        text: 'Đang ngắt kết nối...',
+        showSpinner: true,
+      );
+    } else if (status == PrinterConnectionState.connected) {
+      return _buildStatusIndicator(
+        color: Colors.green,
+        text: 'Đã kết nối',
+        showSpinner: false,
+      );
     }
+    return null;
+  }
+
+  Widget _buildDeviceItem(BuildContext context, PrinterDevice device, BluetoothController controller) {
+    final isProcessing = controller.processingDeviceId == device.id;
+    final isConnected = controller.isDeviceConnected(device.id);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -213,32 +214,23 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
           fontWeight: FontWeight.w500,
           color: isConnected ? Colors.green : null,
         ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        device.id,
+        device.address,
         style: const TextStyle(fontSize: 13),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
-      trailing: getTrailingWidget(),
-      onTap: (isConnecting || isDisconnecting)
-          ? null
-          : () async {
+      trailing: _buildStatusContainer(device, controller),
+      onTap: isProcessing ? null : () async {
         try {
-          if (isConnected) {
-            // Nếu đang kết nối, thực hiện ngắt kết nối
-            await bluetoothController.disconnectPrinter(temporary: false);
-          } else {
-            // Nếu chưa kết nối, thực hiện kết nối
-            await bluetoothController.connectToPrinter(device);
+          await controller.connectToPrinter(device);
+          if (mounted && controller.isDeviceConnected(device.id)) {
             widget.onDeviceSelected();
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Lỗi: $e')),
+            CustomSnackbar.showError(
+              context,
+              'Không thể kết nối: ${e.toString()}',
             );
           }
         }

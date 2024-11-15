@@ -1,26 +1,43 @@
 import 'dart:async';
 import 'package:bluetooth_print/bluetooth_print_model.dart';
 import 'package:flutter/foundation.dart';
+import '../enums/connection_state.dart';
 import '../services/app_lifecycle_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/storage_service.dart';
 import '../models/printer_device.dart';
 
 class BluetoothController extends ChangeNotifier {
+  // Dependencies
   final BluetoothService _bluetoothService;
   final StorageService _storageService;
   final AppLifecycleService _lifecycleService;
 
   PrinterDevice? _connectedPrinter;
   PrinterDevice? _lastKnownPrinter;
+  String? _processingDeviceId;
+  PrinterConnectionState _connectionState = PrinterConnectionState.idle;
   bool _isBluetoothEnabled = false;
-  bool _isConnecting = false;
-  bool _isDisconnecting = false;
   bool _isScanning = false;
   bool _isConnected = false;
   final List<PrinterDevice> _availableDevices = [];
 
+  // Subscriptions & Timers
   StreamSubscription? _deviceSubscription;
+  StreamSubscription? _connectionStateSubscription;
+  Completer<void>? _connectionLock;
+  Timer? _connectionTimeout;
+
+  // Public getters
+  PrinterConnectionState get connectionState => _connectionState;
+  String? get processingDeviceId => _processingDeviceId;
+  bool get isBluetoothEnabled => _isBluetoothEnabled;
+  bool get isConnected => _isConnected;
+  bool get isScanning => _isScanning;
+  List<PrinterDevice> get availableDevices => List.unmodifiable(_availableDevices);
+  PrinterDevice? get connectedPrinter => _connectedPrinter;
+  PrinterDevice? get lastKnownPrinter => _lastKnownPrinter;
+  AppLifecycleService get lifecycleService => _lifecycleService;
 
   BluetoothController({
     required BluetoothService bluetoothService,
@@ -33,17 +50,31 @@ class BluetoothController extends ChangeNotifier {
     _initLifecycleHandlers();
   }
 
+  // Core state checks
+  bool isDeviceConnected(String deviceId) {
+    return _connectedPrinter?.id == deviceId &&
+        _connectionState == PrinterConnectionState.connected;
+  }
 
-  bool get isBluetoothEnabled => _isBluetoothEnabled;
-  bool get isConnecting => _isConnecting;
-  bool get isDisconnecting => _isDisconnecting;
-  bool get isConnected => _isConnected;
-  bool get isScanning => _isScanning;
-  List<PrinterDevice> get availableDevices => List.unmodifiable(_availableDevices);
-  PrinterDevice? get connectedPrinter => _connectedPrinter;
-  PrinterDevice? get lastKnownPrinter => _lastKnownPrinter;
-  AppLifecycleService get lifecycleService => _lifecycleService;
+  PrinterConnectionState getPrinterStatus() {
+    if (!isBluetoothEnabled) {
+      return PrinterConnectionState.disabled;
+    }
 
+    if (isDeviceConnected(connectedPrinter?.id ?? '')) {
+      return PrinterConnectionState.connected;
+    }
+
+    if (connectionState == PrinterConnectionState.connecting) {
+      return PrinterConnectionState.connecting;
+    }
+
+    if (connectionState == PrinterConnectionState.disconnecting) {
+      return PrinterConnectionState.disconnecting;
+    }
+
+    return PrinterConnectionState.idle;
+  }
 
   void _initLifecycleHandlers() {
     _lifecycleService.onPause = () async {
@@ -116,17 +147,17 @@ class BluetoothController extends ChangeNotifier {
     _bluetoothService.stateStream.listen((enabled) {
       _isBluetoothEnabled = enabled;
       if (!enabled) {
+        _connectionState = PrinterConnectionState.idle;
         _isConnected = false;
         _connectedPrinter = null;
       }
       notifyListeners();
     });
 
-    _bluetoothService.connectionStream.listen((connected) {
-      _isConnected = connected;
-      if (!connected) {
-        _connectedPrinter = null;
-      }
+    // Subscribe to connection state changes
+    _connectionStateSubscription = _bluetoothService.connectionStateStream.listen((state) {
+      _connectionState = state;
+      _isConnected = state == PrinterConnectionState.connected;
       notifyListeners();
     });
 
@@ -140,46 +171,16 @@ class BluetoothController extends ChangeNotifier {
     });
   }
 
-  // Cập nhật device list với trạng thái kết nối
-  void _updateDeviceList(List<PrinterDevice> devices) {
-    _availableDevices.clear();
-
-    final updatedDevices = devices.map((device) {
-      return device.copyWith(
-        isConnected: device.id == _connectedPrinter?.id,
-        lastConnectedTime: device.id == _lastKnownPrinter?.id
-            ? _lastKnownPrinter?.lastConnectedTime
-            : null,
-      );
-    }).toList();
-
-    // Sort devices (giữ nguyên logic sort cũ)
-    updatedDevices.sort((a, b) {
-      if (a.id == _connectedPrinter?.id) return -1;
-      if (b.id == _connectedPrinter?.id) return 1;
-
-      final aLastConnected = a.lastConnectedTime;
-      final bLastConnected = b.lastConnectedTime;
-
-      if (aLastConnected != null && bLastConnected != null) {
-        return bLastConnected.compareTo(aLastConnected);
-      }
-      if (aLastConnected != null) return -1;
-      if (bLastConnected != null) return 1;
-
-      return a.name.compareTo(b.name);
-    });
-
-    _availableDevices.addAll(updatedDevices);
-  }
-
   Future<void> enableBluetooth() async {
+    if (_connectionState != PrinterConnectionState.idle) {
+      debugPrint('Cannot enable Bluetooth while in busy state');
+      return;
+    }
+
     try {
       await _bluetoothService.enable();
     } catch (e) {
-      if (kDebugMode) {
-        print('Error enabling bluetooth: $e');
-      }
+      debugPrint('Error enabling bluetooth: $e');
       rethrow;
     }
   }
@@ -190,11 +191,15 @@ class BluetoothController extends ChangeNotifier {
       return;
     }
 
+    if (_connectionState != PrinterConnectionState.idle) {
+      debugPrint('⚠️ Cannot scan while connecting/disconnecting');
+      return;
+    }
+
     try {
       _isScanning = true;
       notifyListeners();
 
-      // Xóa danh sách thiết bị cũ trước khi scan mới
       _availableDevices.clear();
       notifyListeners();
 
@@ -225,26 +230,33 @@ class BluetoothController extends ChangeNotifier {
   }
 
   Future<void> connectToPrinter(PrinterDevice printer) async {
-    // Nếu đang trong quá trình connect hoặc disconnect thì bỏ qua
-    if (_isConnecting || _isDisconnecting) return;
+    if (_connectionLock != null) {
+      debugPrint('⚠️ Đang có quá trình kết nối/ngắt kết nối, bỏ qua yêu cầu mới');
+      return;
+    }
+
+    _connectionLock = Completer<void>();
+    _processingDeviceId = printer.id;
 
     try {
-      // Nếu đang kết nối với thiết bị này, thực hiện ngắt kết nối
+      _connectionTimeout = Timer(const Duration(seconds: 10), () {
+        if (!_connectionLock!.isCompleted) {
+          _connectionLock!.completeError('Quá thời gian kết nối');
+        }
+      });
+
+      // Toggle disconnect if clicking connected device
       if (_isConnected && _connectedPrinter?.id == printer.id) {
-        debugPrint('Disconnecting from printer: ${printer.name}');
         await disconnectPrinter(temporary: false);
         return;
       }
 
-      _isConnecting = true;
-      notifyListeners();
-
-      // Ngắt kết nối với thiết bị khác nếu đang kết nối
+      // Disconnect from current device if exists
       if (_isConnected && _connectedPrinter != null) {
         await disconnectPrinter(temporary: true);
       }
 
-      debugPrint('Connecting to printer: ${printer.name}');
+      await Future.delayed(const Duration(seconds: 1));
       await _bluetoothService.connect(printer);
 
       final updatedPrinter = printer.copyWith(
@@ -252,9 +264,10 @@ class BluetoothController extends ChangeNotifier {
         lastConnectedTime: DateTime.now(),
       );
 
-      _connectedPrinter = printer;
-      _lastKnownPrinter = _connectedPrinter;
+      _connectedPrinter = updatedPrinter;
+      _lastKnownPrinter = updatedPrinter;
       _isConnected = true;
+
       await _storageService.saveLastPrinter(updatedPrinter);
 
     } catch (e) {
@@ -263,7 +276,12 @@ class BluetoothController extends ChangeNotifier {
       _connectedPrinter = null;
       rethrow;
     } finally {
-      _isConnecting = false;
+      _connectionTimeout?.cancel();
+      if (_connectionLock != null && !_connectionLock!.isCompleted) {
+        _connectionLock!.complete();
+      }
+      _connectionLock = null;
+      _processingDeviceId = null;
       notifyListeners();
     }
   }
@@ -274,51 +292,56 @@ class BluetoothController extends ChangeNotifier {
       return;
     }
 
+    if (_connectionState == PrinterConnectionState.disconnecting) {
+      debugPrint('⚠️ Đang trong quá trình ngắt kết nối');
+      return;
+    }
+
     try {
       final printerName = _connectedPrinter?.name ?? 'Unknown';
-      debugPrint('🔄 Đang ngắt kết nối với $printerName...');
-      _isDisconnecting = true;  // Set trạng thái đang ngắt kết nối
+      final printerId = _connectedPrinter?.id;
+
+      _connectionState = PrinterConnectionState.disconnecting;
+      _processingDeviceId = printerId;
       notifyListeners();
 
-      // Lưu thông tin máy in trước khi ngắt nếu cần
+      debugPrint('🔄 Đang ngắt kết nối với $printerName...');
+
       if (!temporary && _connectedPrinter != null) {
         final updatedPrinter = _connectedPrinter?.copyWith(
           lastConnectedTime: DateTime.now(),
+          connectionState: PrinterConnectionState.idle,
         );
         await _storageService.saveLastPrinter(updatedPrinter!);
-        debugPrint('💾 Đã lưu thông tin máy in trước khi ngắt');
       }
 
-      // Thực hiện ngắt kết nối
+      await Future.delayed(const Duration(seconds: 1));
       await _bluetoothService.disconnect();
-
-      // Đợi để đảm bảo ngắt kết nối hoàn tất
-      await Future.delayed(const Duration(milliseconds: 300));
 
       _isConnected = false;
       if (!temporary) {
         _connectedPrinter = null;
-        debugPrint('🗑️ Đã xóa thông tin máy in');
       }
 
-      debugPrint('✅ Đã ngắt kết nối ${temporary ? "(tạm thời)" : ""}');
+      _connectionState = PrinterConnectionState.idle;
+
     } catch (e) {
       debugPrint('❌ Lỗi ngắt kết nối: $e');
-      // Reset trạng thái ngay cả khi có lỗi
+      _connectionState = PrinterConnectionState.idle;
       _isConnected = false;
       if (!temporary) {
         _connectedPrinter = null;
       }
       rethrow;
     } finally {
-      _isDisconnecting = false;  // Reset trạng thái
+      _processingDeviceId = null;
       notifyListeners();
     }
   }
 
   Future<void> reconnectLastPrinter() async {
-    if (!_isBluetoothEnabled) {
-      debugPrint('Bluetooth is not enabled, cannot reconnect');
+    if (!_isBluetoothEnabled || _connectionState != PrinterConnectionState.idle) {
+      debugPrint('Cannot reconnect: Bluetooth disabled or busy state');
       return;
     }
 
@@ -333,6 +356,7 @@ class BluetoothController extends ChangeNotifier {
         await connectToPrinter(_lastKnownPrinter!);
       }
     } catch (e) {
+      _connectionState = PrinterConnectionState.idle;
       _isConnected = false;
       _connectedPrinter = null;
       notifyListeners();
@@ -341,14 +365,15 @@ class BluetoothController extends ChangeNotifier {
   }
 
   Future<void> printData(Map<String, dynamic> config, List<LineText> data) async {
-    if (!_isConnected || _connectedPrinter == null) {
+    if (_connectionState != PrinterConnectionState.connected ||
+        _connectedPrinter == null) {
       throw Exception('Chưa kết nối máy in');
     }
 
     try {
-      // Verify connection before printing
       final isStillConnected = await _bluetoothService.verifyConnection();
       if (!isStillConnected) {
+        _connectionState = PrinterConnectionState.idle;
         _isConnected = false;
         notifyListeners();
         throw Exception('Mất kết nối với máy in');
@@ -358,7 +383,7 @@ class BluetoothController extends ChangeNotifier {
       await _bluetoothService.print(config, data);
     } catch (e) {
       debugPrint('Error printing: $e');
-      // Reset connection state if printing fails
+      _connectionState = PrinterConnectionState.idle;
       _isConnected = false;
       notifyListeners();
       rethrow;
@@ -366,7 +391,10 @@ class BluetoothController extends ChangeNotifier {
   }
 
   Future<bool> verifyPrinterConnection() async {
-    if (!_isConnected || _connectedPrinter == null) return false;
+    if (_connectionState != PrinterConnectionState.connected ||
+        _connectedPrinter == null) {
+      return false;
+    }
     return await _bluetoothService.verifyConnection();
   }
 
@@ -375,9 +403,68 @@ class BluetoothController extends ChangeNotifier {
     return await _bluetoothService.verifyDeviceExists(_lastKnownPrinter!.id);
   }
 
+  void _updateDeviceList(List<PrinterDevice> devices) {
+    _availableDevices.clear();
+
+    final updatedDevices = devices.map((device) {
+      // Cập nhật trạng thái kết nối cho từng thiết bị
+      if (device.id == _processingDeviceId) {
+        return device.copyWith(
+          connectionState: _connectionState,
+          isConnected: _connectionState == PrinterConnectionState.connected,
+          lastConnectedTime: _connectionState == PrinterConnectionState.connected ?
+          DateTime.now() : device.lastConnectedTime,
+        );
+      } else if (device.id == _connectedPrinter?.id) {
+        return device.copyWith(
+          connectionState: PrinterConnectionState.connected,
+          isConnected: true,
+          lastConnectedTime: _connectedPrinter?.lastConnectedTime,
+        );
+      }
+
+      return device.copyWith(
+        connectionState: PrinterConnectionState.idle,
+        isConnected: false,
+        lastConnectedTime: device.id == _lastKnownPrinter?.id ?
+        _lastKnownPrinter?.lastConnectedTime : null,
+      );
+    }).toList();
+
+    // Sort devices with new logic
+    updatedDevices.sort((a, b) {
+      // Connected device first
+      if (a.connectionState == PrinterConnectionState.connected) return -1;
+      if (b.connectionState == PrinterConnectionState.connected) return 1;
+
+      // Processing device second
+      if (a.id == _processingDeviceId) return -1;
+      if (b.id == _processingDeviceId) return 1;
+
+      // Last connected devices next
+      final aLastConnected = a.lastConnectedTime;
+      final bLastConnected = b.lastConnectedTime;
+
+      if (aLastConnected != null && bLastConnected != null) {
+        return bLastConnected.compareTo(aLastConnected);
+      }
+      if (aLastConnected != null) return -1;
+      if (bLastConnected != null) return 1;
+
+      // Finally sort by name
+      return a.name.compareTo(b.name);
+    });
+
+    _availableDevices.addAll(updatedDevices);
+  }
+
+
   @override
   void dispose() {
     stopScan();
+    _connectionTimeout?.cancel();
+    _connectionStateSubscription?.cancel();
+    _connectionLock = null;
     _lifecycleService.dispose();
     _bluetoothService.dispose();
     _deviceSubscription?.cancel();

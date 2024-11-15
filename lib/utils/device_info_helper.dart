@@ -11,28 +11,38 @@ class DeviceInfoHelper {
     if (difference.inMinutes < 1) {
       return 'vừa xong';
     } else if (difference.inHours < 1) {
-      final minutes = difference.inMinutes;
-      return '$minutes phút trước';
+      return '${difference.inMinutes} phút trước';
     } else if (difference.inDays < 1) {
-      final hours = difference.inHours;
-      return '$hours giờ trước';
+      return '${difference.inHours} giờ trước';
     } else if (difference.inDays < 30) {
-      final days = difference.inDays;
-      return '$days ngày trước';
-    } else {
-      return '${lastConnected.day.toString().padLeft(2, '0')}/'
-          '${lastConnected.month.toString().padLeft(2, '0')}/'
-          '${lastConnected.year}';
+      return '${difference.inDays} ngày trước';
     }
+
+    return '${lastConnected.day.toString().padLeft(2, '0')}/'
+        '${lastConnected.month.toString().padLeft(2, '0')}/'
+        '${lastConnected.year}';
   }
 
-  static Widget buildDeviceInfo(PrinterDevice? lastPrinter, bool isConnected) {
+  static Widget buildDeviceInfo(PrinterDevice? printer, bool isConnected) {
+    if (printer == null) {
+      return const Text(
+        'Chưa có máy in được lưu',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          lastPrinter?.name ?? 'Chưa có máy in được lưu',
+          printer.name,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
@@ -41,21 +51,15 @@ class DeviceInfoHelper {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        if (lastPrinter != null && !isConnected) ...[
+        if (!isConnected && printer.lastConnectedTime != null) ...[
           const SizedBox(height: 2),
           Row(
             children: [
-              Icon(
-                Icons.history,
-                size: 12,
-                color: Colors.grey.shade600,
-              ),
+              Icon(Icons.history, size: 12, color: Colors.grey.shade600),
               const SizedBox(width: 4),
               Flexible(
                 child: Text(
-                  lastPrinter.lastConnectedTime != null
-                      ? 'Kết nối lần cuối: ${formatLastConnected(lastPrinter.lastConnectedTime)}'
-                      : 'Chưa có thông tin kết nối',
+                  'Kết nối lần cuối: ${formatLastConnected(printer.lastConnectedTime)}',
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.grey.shade600,

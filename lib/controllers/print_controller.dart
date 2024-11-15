@@ -64,10 +64,16 @@ class PrintController extends ChangeNotifier {
 
   // Getters
   String get selectedProvider => _selectedProvider;
+
   String get selectedDenomination => _selectedDenomination;
+
   bool get printWithQR => _printWithQR;
+
   List<String> get availableProviders => _providerDenominations.keys.toList();
-  List<String> get availableDenominations => _providerDenominations[_selectedProvider] ?? [];
+
+  List<String> get availableDenominations =>
+      _providerDenominations[_selectedProvider] ?? [];
+
   CardInfo? get lastPrintedCard => _lastPrintedCard;
 
   void setProvider(String? provider) {
@@ -107,7 +113,8 @@ class PrintController extends ChangeNotifier {
         _cachedCardInfo == null;
   }
 
-  Future<CardInfo?> validateCardInput(BuildContext context, String input) async {
+  Future<CardInfo?> validateCardInput(
+      BuildContext context, String input) async {
     try {
       if (input.trim().isEmpty) {
         CustomSnackbar.showWarning(
@@ -174,15 +181,17 @@ class PrintController extends ChangeNotifier {
         CustomSnackbar.showError(
           context,
           'Mã nạp không hợp lệ cho nhà mạng $_selectedProvider\n'
-              'Viettel: 13 hoặc 15 số\n'
-              'Vinaphone: 14 số\n'
-              'Mobifone: 12 số',
+          'Viettel: 13 hoặc 15 số\n'
+          'Vinaphone: 14 số\n'
+          'Mobifone: 12 số',
         );
         return null;
       }
 
-      final formattedRechargeCode = _formatCardNumber(rechargeCode, _selectedProvider);
-      final formattedSerialNumber = _formatCardNumber(serialNumber, _selectedProvider);
+      final formattedRechargeCode =
+          _formatCardNumber(rechargeCode, _selectedProvider);
+      final formattedSerialNumber =
+          _formatCardNumber(serialNumber, _selectedProvider);
 
       return CardInfo(
         provider: _selectedProvider,
@@ -200,7 +209,8 @@ class PrintController extends ChangeNotifier {
     }
   }
 
-  Future<Uint8List?> createPreview(BuildContext context, String cardText) async {
+  Future<Uint8List?> createPreview(
+      BuildContext context, String cardText) async {
     try {
       if (_shouldRegeneratePreview(cardText)) {
         debugPrint('Generating new preview image...');
