@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../enums/connection_state.dart';
 
 extension PrinterStatusX on PrinterConnectionState {
-  // Chỉ giữ lại các phương thức liên quan đến hiển thị trạng thái
+  // Background color cho container
   Color get backgroundColor {
     switch (this) {
       case PrinterConnectionState.disabled:
@@ -12,11 +12,11 @@ extension PrinterStatusX on PrinterConnectionState {
         return Colors.blue.shade50;
       case PrinterConnectionState.connected:
         return Colors.green.shade50;
-      case PrinterConnectionState.disconnecting:
-        return Colors.red.shade50;
+      default: return Colors.grey.shade50;
     }
   }
 
+  // Border color
   Color get borderColor {
     switch (this) {
       case PrinterConnectionState.disabled:
@@ -26,11 +26,11 @@ extension PrinterStatusX on PrinterConnectionState {
         return Colors.blue.shade200;
       case PrinterConnectionState.connected:
         return Colors.green.shade200;
-      case PrinterConnectionState.disconnecting:
-        return Colors.red.shade200;
+      default: return Colors.grey.shade300;
     }
   }
 
+  // Text/Icon color
   Color get foregroundColor {
     switch (this) {
       case PrinterConnectionState.disabled:
@@ -40,11 +40,12 @@ extension PrinterStatusX on PrinterConnectionState {
         return Colors.blue.shade600;
       case PrinterConnectionState.connected:
         return Colors.green.shade600;
-      case PrinterConnectionState.disconnecting:
-        return Colors.red.shade600;
+      default:
+        return Colors.grey.shade600;
     }
   }
 
+  // Status text - simplified
   String getStatusText(String? printerName) {
     switch (this) {
       case PrinterConnectionState.disabled:
@@ -55,12 +56,11 @@ extension PrinterStatusX on PrinterConnectionState {
         return 'Đang kết nối...';
       case PrinterConnectionState.connected:
         return printerName ?? 'Đã kết nối';
-      case PrinterConnectionState.disconnecting:
-        return 'Đang ngắt kết nối...';
+      default:
+        return 'Chọn máy in';
     }
   }
 
-  bool get showSpinner =>
-      this == PrinterConnectionState.connecting ||
-          this == PrinterConnectionState.disconnecting;
+  // Show spinner only for connecting state
+  bool get showSpinner => this == PrinterConnectionState.connecting;
 }

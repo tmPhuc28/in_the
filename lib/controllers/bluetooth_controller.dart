@@ -56,6 +56,17 @@ class BluetoothController extends ChangeNotifier {
         _connectionState == PrinterConnectionState.connected;
   }
 
+  bool isDeviceConnecting(String deviceId) {
+    return _processingDeviceId == deviceId &&
+        _connectionState == PrinterConnectionState.connecting;
+  }
+
+  bool isDeviceDisconnecting(String deviceId) {
+    return _processingDeviceId == deviceId &&
+        _connectionState == PrinterConnectionState.disconnecting;
+  }
+
+
   PrinterConnectionState getPrinterStatus() {
     if (!isBluetoothEnabled) {
       return PrinterConnectionState.disabled;
@@ -185,21 +196,20 @@ class BluetoothController extends ChangeNotifier {
     }
   }
 
-  Future<void> scanForDevices({Duration timeout = const Duration(seconds: 10)}) async {
+  Future<void> scanForDevices({Duration timeout = const Duration(seconds: 4)}) async {
     if (!_isBluetoothEnabled) {
       debugPrint('⚠️ Bluetooth not enabled');
       return;
     }
 
-    if (_connectionState != PrinterConnectionState.idle) {
+    if (_connectionState == PrinterConnectionState.connecting ||
+        _connectionState == PrinterConnectionState.disconnecting) {
       debugPrint('⚠️ Cannot scan while connecting/disconnecting');
       return;
     }
 
     try {
       _isScanning = true;
-      notifyListeners();
-
       _availableDevices.clear();
       notifyListeners();
 
@@ -256,7 +266,7 @@ class BluetoothController extends ChangeNotifier {
         await disconnectPrinter(temporary: true);
       }
 
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(milliseconds: 800));
       await _bluetoothService.connect(printer);
 
       final updatedPrinter = printer.copyWith(
@@ -315,9 +325,10 @@ class BluetoothController extends ChangeNotifier {
         await _storageService.saveLastPrinter(updatedPrinter!);
       }
 
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(milliseconds: 800));
       await _bluetoothService.disconnect();
 
+      await Future.delayed(const Duration(milliseconds: 200));
       _isConnected = false;
       if (!temporary) {
         _connectedPrinter = null;

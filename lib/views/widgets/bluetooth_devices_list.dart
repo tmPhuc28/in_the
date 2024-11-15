@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/bluetooth_controller.dart';
-import '../../enums/connection_state.dart';
 import '../../models/printer_device.dart';
 import 'custom_snackbar.dart';
 
@@ -164,21 +163,20 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
   }
 
   Widget? _buildStatusContainer(PrinterDevice device, BluetoothController controller) {
-    final status = controller.getPrinterStatus();
 
-    if (status == PrinterConnectionState.connecting) {
+    if (controller.isDeviceConnecting(device.id)) {
       return _buildStatusIndicator(
         color: Colors.blue,
         text: 'Đang kết nối...',
         showSpinner: true,
       );
-    } else if (status == PrinterConnectionState.disconnecting) {
+    } else if (controller.isDeviceDisconnecting(device.id)) {
       return _buildStatusIndicator(
         color: Colors.red,
         text: 'Đang ngắt kết nối...',
         showSpinner: true,
       );
-    } else if (status == PrinterConnectionState.connected) {
+    } else if (controller.isDeviceConnected(device.id)) {
       return _buildStatusIndicator(
         color: Colors.green,
         text: 'Đã kết nối',

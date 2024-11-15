@@ -111,10 +111,7 @@ class BluetoothService {
     _deviceController.add(List.unmodifiable(devices));
   }
 
-  Future<List<PrinterDevice>> scanDevices({
-    Duration scanDuration = const Duration(seconds: 4),
-    Duration waitForResult = const Duration(milliseconds: 500),
-  }) async {
+  Future<List<PrinterDevice>> scanDevices({Duration scanDuration = const Duration(seconds: 4), Duration waitForResult = const Duration(milliseconds: 500),}) async {
     if (_isScanning) {
       await stopScan();
     }
@@ -156,6 +153,8 @@ class BluetoothService {
           if (!completer.isCompleted) {
             completer.completeError(error);
           }
+          _isScanning = false;
+          _emitDevices();
         },
         onDone: () {
           debugPrint('Scan completed');
@@ -176,6 +175,7 @@ class BluetoothService {
     } catch (e) {
       debugPrint('Error scanning devices: $e');
       _isScanning = false;
+      _emitDevices();
       rethrow;
     }
   }
@@ -187,6 +187,7 @@ class BluetoothService {
       await _bluetoothPrint.stopScan();
     } finally {
       _isScanning = false;
+      _emitDevices();
     }
   }
 
