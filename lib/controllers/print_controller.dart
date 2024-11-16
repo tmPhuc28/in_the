@@ -306,7 +306,6 @@ class PrintController extends ChangeNotifier {
       final printData = _printService.createPrintData(imageData);
       debugPrint('Print data prepared with ${printData.length} items');
 
-      await Future.delayed(const Duration(seconds: 1));
       await _bluetoothController.printData(config, printData);
 
       await Future.delayed(const Duration(seconds: 1));

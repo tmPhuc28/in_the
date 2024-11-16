@@ -8,10 +8,9 @@ import 'package:flutter/foundation.dart';
 
 class BluetoothService {
   final BluetoothPrint _bluetoothPrint = BluetoothPrint.instance;
-  final _stateController = StreamController<bool>.broadcast();
-  final _connectionController = StreamController<bool>.broadcast();
+  final _bluetoothStateController = StreamController<bool>.broadcast();
   final _deviceController = StreamController<List<PrinterDevice>>.broadcast();
-  final _connectionStateController = StreamController<PrinterConnectionState>.broadcast();
+  final _printerConnectionStateController = StreamController<PrinterConnectionState>.broadcast();
   final _scannedDevices = <String, PrinterDevice>{};
   bool _isScanning = true;
   StreamSubscription? _bluetoothStateSubscription;
@@ -22,20 +21,19 @@ class BluetoothService {
     _initListeners();
   }
 
-  Stream<bool> get stateStream => _stateController.stream;
-  Stream<bool> get connectionStream => _connectionController.stream;
-  Stream<PrinterConnectionState> get connectionStateStream => _connectionStateController.stream;
+  Stream<bool> get bluetoothStateStream => _bluetoothStateController.stream;
+  Stream<PrinterConnectionState> get printerConnectionStateStream => _printerConnectionStateController.stream;
   Stream<List<PrinterDevice>> get deviceStream => _deviceController.stream;
   bool get isScanning => _isScanning;
 
   void _initListeners() {
     _bluetoothStateSubscription = fbp.FlutterBluePlus.adapterState.listen((state) {
       final isEnabled = state == fbp.BluetoothAdapterState.on;
-      _stateController.add(isEnabled);
+      _bluetoothStateController.add(isEnabled);
 
       // Nếu bluetooth bị tắt, reset các state khác
       if (!isEnabled) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
         _deviceController.add([]);
         _scannedDevices.clear();
       }
@@ -44,10 +42,10 @@ class BluetoothService {
     _connectionStateSubscription = _bluetoothPrint.state.listen((state) {
       switch (state) {
         case BluetoothPrint.CONNECTED:
-          _connectionStateController.add(PrinterConnectionState.connected);
+          _printerConnectionStateController.add(PrinterConnectionState.connected);
           break;
         case BluetoothPrint.DISCONNECTED:
-          _connectionStateController.add(PrinterConnectionState.idle);
+          _printerConnectionStateController.add(PrinterConnectionState.idle);
           break;
         default:
         // Có thể thêm các trạng thái khác nếu cần
@@ -60,7 +58,7 @@ class BluetoothService {
     try {
       final isOn = await _bluetoothPrint.isOn;
       if (!isOn) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
       }
       return isOn;
     } catch (e) {
@@ -75,9 +73,6 @@ class BluetoothService {
         const Duration(seconds: 5),
         onTimeout: () => throw TimeoutException('Không thể bật Bluetooth'),
       );
-
-      // Đợi một chút để đảm bảo Bluetooth đã sẵn sàng
-      await Future.delayed(const Duration(milliseconds: 500));
 
       final isEnabledBle = await isEnabled();
       if (!isEnabledBle) {
@@ -193,8 +188,7 @@ class BluetoothService {
 
   Future<void> connect(PrinterDevice printer, {Duration timeout = const Duration(seconds: 3)}) async {
     try {
-      _connectionStateController.add(PrinterConnectionState.connecting);
-
+      _printerConnectionStateController.add(PrinterConnectionState.connecting);
       final btDevice = BluetoothDevice();
       btDevice.name = printer.name;
       btDevice.address = printer.id;
@@ -205,22 +199,21 @@ class BluetoothService {
       });
 
       if (isConnected != true) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
         throw Exception('Không thể kết nối với máy in');
       }
 
       // Verify connection after successful connect
-      await Future.delayed(const Duration(milliseconds: 500));
       final verified = await verifyConnection();
       if (!verified) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
         throw Exception('Kết nối không ổn định');
       }
 
-      _connectionStateController.add(PrinterConnectionState.connected);
+      _printerConnectionStateController.add(PrinterConnectionState.connected);
       debugPrint('Successfully connected to ${printer.name}');
     } catch (e) {
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
       debugPrint('Error in connect: $e');
       rethrow;
     }
@@ -228,12 +221,11 @@ class BluetoothService {
 
   Future<void> disconnect() async {
     try {
-      _connectionStateController.add(PrinterConnectionState.disconnecting);
+      _printerConnectionStateController.add(PrinterConnectionState.disconnecting);
       await _bluetoothPrint.disconnect();
-      await Future.delayed(const Duration(milliseconds: 500));
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
     } catch (e) {
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
       if (kDebugMode) {
         debugPrint('Error disconnecting printer: $e');
       }
@@ -245,12 +237,12 @@ class BluetoothService {
     try {
       final isConnected = await _bluetoothPrint.isConnected ?? false;
       if (!isConnected) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
       }
       return isConnected;
     } catch (e) {
       debugPrint('Error verifying connection: $e');
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
       return false;
     }
   }
@@ -260,7 +252,7 @@ class BluetoothService {
       // Verify connection trước khi in
       final isConnected = await verifyConnection();
       if (!isConnected) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
         throw Exception('Mất kết nối với máy in');
       }
 
@@ -274,20 +266,17 @@ class BluetoothService {
         throw Exception('Không thể in. Vui lòng kiểm tra lại máy in');
       }
 
-      // Đợi một chút để đảm bảo lệnh in được xử lý
-      await Future.delayed(const Duration(seconds: 1));
-
       // Verify lại kết nối sau khi in
       final stillConnected = await verifyConnection();
       if (!stillConnected) {
-        _connectionStateController.add(PrinterConnectionState.idle);
+        _printerConnectionStateController.add(PrinterConnectionState.idle);
         throw Exception('Mất kết nối sau khi in');
       }
 
       debugPrint('Print job completed successfully');
     } catch (e) {
       debugPrint('Error during printing: $e');
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
       rethrow;
     }
   }
@@ -295,7 +284,7 @@ class BluetoothService {
   Future<void> cleanupConnection() async {
     try {
       await disconnect();
-      _connectionStateController.add(PrinterConnectionState.idle);
+      _printerConnectionStateController.add(PrinterConnectionState.idle);
       _scannedDevices.clear();
       _emitDevices();
     } catch (e) {
@@ -309,9 +298,8 @@ class BluetoothService {
     _bluetoothStateSubscription?.cancel();
     _connectionStateSubscription?.cancel();
     _deviceController.close();
-    _stateController.close();
-    _connectionController.close();
-    _connectionStateController.close();
+    _bluetoothStateController.close();
+    _printerConnectionStateController.close();
     _bluetoothPrint.disconnect();
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../controllers/bluetooth_controller.dart';
+import '../../di/service_locator.dart';
 import '../../models/printer_device.dart';
+import '../../services/storage_service.dart';
 import 'custom_snackbar.dart';
 
 
@@ -18,6 +20,8 @@ class BluetoothDevicesList extends StatefulWidget {
 }
 
 class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
+  final StorageService _storageService = getIt<StorageService>();
+
   @override
   void initState() {
     super.initState();
@@ -29,6 +33,72 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
         controller.scanForDevices();
       }
     });
+  }
+
+  Future<void> _showRenameDialog(PrinterDevice device) async {
+    final TextEditingController nameController = TextEditingController(text: device.name);
+    final formKey = GlobalKey<FormState>();
+
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đổi tên thiết bị'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: nameController,
+            decoration: const InputDecoration(
+              labelText: 'Tên thiết bị',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Vui lòng nhập tên thiết bị';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (formKey.currentState?.validate() ?? false) {
+                Navigator.pop(context);
+                await _renamePrinter(device, nameController.text.trim());
+              }
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _renamePrinter(PrinterDevice device, String newName) async {
+    try {
+      await _storageService.renamePrinter(device.id, newName);
+
+      if (mounted) {
+        final controller = context.read<BluetoothController>();
+        await controller.refreshPrinterInfo();
+
+        CustomSnackbar.showSuccess(
+          context,
+          'Đã đổi tên thành công',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        CustomSnackbar.showError(
+          context,
+          'Không thể đổi tên thiết bị: $e',
+        );
+      }
+    }
   }
 
   Widget _buildBluetoothDisabled(BluetoothController controller) {
@@ -117,11 +187,7 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
     );
   }
 
-  Widget _buildStatusIndicator({
-    required Color color,
-    required String text,
-    required bool showSpinner,
-  }) {
+  Widget _buildStatusIndicator({required Color color, required String text, required bool showSpinner,}) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 12,
@@ -163,7 +229,6 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
   }
 
   Widget? _buildStatusContainer(PrinterDevice device, BluetoothController controller) {
-
     if (controller.isDeviceConnecting(device.id)) {
       return _buildStatusIndicator(
         color: Colors.blue,
@@ -212,12 +277,45 @@ class _BluetoothDevicesListState extends State<BluetoothDevicesList> {
           fontWeight: FontWeight.w500,
           color: isConnected ? Colors.green : null,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
         device.address,
         style: const TextStyle(fontSize: 13),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
-      trailing: _buildStatusContainer(device, controller),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Menu cho thiết bị đã lưu
+          if (device.lastConnectedTime != null)
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: isProcessing ? null : () {
+                showModalBottomSheet(
+                  context: context,
+                  builder: (context) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.edit),
+                        title: const Text('Đổi tên'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showRenameDialog(device);
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          if (_buildStatusContainer(device, controller) != null)
+            _buildStatusContainer(device, controller)!,
+        ],
+      ),
       onTap: isProcessing ? null : () async {
         try {
           await controller.connectToPrinter(device);

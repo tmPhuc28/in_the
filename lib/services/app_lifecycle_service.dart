@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 
 class AppLifecycleService extends ChangeNotifier with WidgetsBindingObserver {
   bool _isPreviewOpen = false;
-  bool _isResumed = false;
 
   VoidCallback? onResume;
   VoidCallback? onPause;
@@ -12,8 +11,6 @@ class AppLifecycleService extends ChangeNotifier with WidgetsBindingObserver {
   AppLifecycleService() {
     debugPrint('Initializing AppLifecycleService');
     WidgetsBinding.instance.addObserver(this);
-    // Kiểm tra state ban đầu
-    _isResumed = WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
   }
 
   void setPreviewState(bool isOpen) {
@@ -23,7 +20,8 @@ class AppLifecycleService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   bool get isPreviewOpen => _isPreviewOpen;
-  bool get isResumed => _isResumed;
+  bool get isResumed =>
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -31,19 +29,16 @@ class AppLifecycleService extends ChangeNotifier with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.resumed:
-        _isResumed = true;
         debugPrint('App resumed - calling onResume callback');
         onResume?.call();
         notifyListeners();
 
       case AppLifecycleState.paused:
-        _isResumed = false;
         debugPrint('App paused - calling onPause callback');
         onPause?.call();
         notifyListeners();
 
       case AppLifecycleState.detached:
-        _isResumed = false;
         debugPrint('App detached - calling onDetach callback');
         onDetach?.call();
         notifyListeners();

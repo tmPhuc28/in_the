@@ -4,7 +4,6 @@ class PrinterDevice {
   final String id;
   final String name;
   final String address;
-  final bool isConnected;
   final DateTime? lastConnectedTime;
   final PrinterConnectionState connectionState;
 
@@ -12,37 +11,18 @@ class PrinterDevice {
     required this.id,
     required this.name,
     required this.address,
-    this.isConnected = false,
     this.lastConnectedTime,
     this.connectionState = PrinterConnectionState.idle,
   });
 
-  factory PrinterDevice.fromJson(Map<String, dynamic> json) {
-    return PrinterDevice(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      address: json['address'] as String,
-      isConnected: json['isConnected'] as bool? ?? false,
-      lastConnectedTime: json['lastConnectedTime'] != null
-          ? DateTime.parse(json['lastConnectedTime'] as String)
-          : null,
-      connectionState: PrinterConnectionState.idle,
-    );
-  }
+  // Thay thế biến isConnected bằng getter
+  bool get isConnected => connectionState == PrinterConnectionState.connected;
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'address': address,
-    'isConnected': isConnected,
-    'lastConnectedTime': lastConnectedTime?.toIso8601String(),
-  };
-
+  // Cập nhật copyWith để không còn tham số isConnected
   PrinterDevice copyWith({
     String? id,
     String? name,
     String? address,
-    bool? isConnected,
     DateTime? lastConnectedTime,
     PrinterConnectionState? connectionState,
   }) {
@@ -50,29 +30,32 @@ class PrinterDevice {
       id: id ?? this.id,
       name: name ?? this.name,
       address: address ?? this.address,
-      isConnected: isConnected ?? this.isConnected,
       lastConnectedTime: lastConnectedTime ?? this.lastConnectedTime,
       connectionState: connectionState ?? this.connectionState,
     );
   }
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-          other is PrinterDevice &&
-              id == other.id &&
-              name == other.name &&
-              address == other.address &&
-              isConnected == other.isConnected &&
-              lastConnectedTime == other.lastConnectedTime &&
-              connectionState == other.connectionState;
+  // Cập nhật fromJson để sử dụng connectionState
+  factory PrinterDevice.fromJson(Map<String, dynamic> json) {
+    return PrinterDevice(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      address: json['address'] as String,
+      lastConnectedTime: json['lastConnectedTime'] != null
+          ? DateTime.parse(json['lastConnectedTime'] as String)
+          : null,
+      connectionState: json['connectionState'] != null
+          ? PrinterConnectionState.values[json['connectionState'] as int]
+          : PrinterConnectionState.idle,
+    );
+  }
 
-  @override
-  int get hashCode =>
-      id.hashCode ^
-      name.hashCode ^
-      address.hashCode ^
-      isConnected.hashCode ^
-      lastConnectedTime.hashCode ^
-      connectionState.hashCode;
+  // Cập nhật toJson để lưu connectionState
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'address': address,
+    'lastConnectedTime': lastConnectedTime?.toIso8601String(),
+    'connectionState': connectionState.index,
+  };
 }
